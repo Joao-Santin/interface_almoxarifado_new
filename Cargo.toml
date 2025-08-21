@@ -1,0 +1,9 @@
+[package]
+name = "interface_almoxarifado"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+egestorapi_test = {path = "../egestor_api"}
+iced = {version = "0.13", features = ["tokio"]}
+reqwest = { version = "0.12", features = ["json"] }
