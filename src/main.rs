@@ -66,7 +66,23 @@ impl AlmoxarifadoApp{
                 button(text(self.counter.value)).on_press(Message::Changescreen(Screens::Carrinho)).into()
             }
             Screens::Carrinho => {
-                text("teste apenas").into()
+                row![
+                    column![
+                        row![text("text_input"),button(text("testando"))],
+                        column![text("pick_list"),],
+                    ],
+                    column![
+                        text("Codigo:"),
+                        text("Nome:"),
+                        text("Estoque:"),
+                        text("Quantidade Mov:"),
+                        row![
+                            text("-retirada-"),
+                            text("-entrada-")
+                        ],
+
+                    ],
+                ].into()
             }
         }
     }
