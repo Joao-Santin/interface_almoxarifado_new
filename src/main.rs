@@ -1,6 +1,8 @@
 use iced::widget::{button, text, text_input, row, column, center, keyed_column};
+use iced::Alignment::Center;
+use iced::Length::Fill;
 use iced::{Element, Task as Command};// Subscription para caso precise iniciar algo assim que rodar.
-use egestorapi_test::{ERPToken, AjusteEstoque, ItemRetirada};
+use egestorapi_test::{ERPToken, AjusteEstoque};
 
 #[derive(Debug, Clone)]
 enum Message{
@@ -24,7 +26,7 @@ enum Screens{
 struct AlmoxarifadoApp{
     token: String,
     filter: String,
-    itens: Vec<ItemRetirada>,
+    estoque: AjusteEstoque,
     screen: Screens
     
 }
@@ -34,7 +36,7 @@ impl Default for AlmoxarifadoApp{
         Self{
             token: String::new(),
             filter: String::new(),
-            itens: Vec::new(),
+            estoque: AjusteEstoque::new(),
             screen: Screens::Main
         }
     }
@@ -67,6 +69,8 @@ impl AlmoxarifadoApp{
                 }
             }
             Message::Filter => {
+                //self.estoque.get_estoque() //fazer na lib um metodo para coleta de estoque de forma
+                //mais rapida
                 println!("filtrando por:{}", self.filter);
                 Command::none()
             }
@@ -80,22 +84,42 @@ impl AlmoxarifadoApp{
     fn view(&self) -> Element<Message> {
         match self.screen{
             Screens::Main =>{
-                column![
-                    text("ALMOXARIFADO"),
-                    row![
-                        button(text("carrinho"))
-                        .on_press(Message::Changescreen(Screens::Carrinho)),
-                        button(text("historico")),
-                        button(text("categoria")),
-                    ],
-                    text_input("O que precisa para hoje?", &self.filter)
+                let title = text("almoxarifado")
+                    .width(Fill)
+                    .size(100)
+                    .color([0.5, 0.5, 0.5])
+                    .align_x(Center);
+                let button_row = row![
+                    button(text("carrinho"))
+                    .on_press(Message::Changescreen(Screens::Carrinho)),
+                    button(text("historico")),
+                    button(text("categoria")),
+
+                ];
+                let input_filter = text_input("O que precisa para hoje?", &self.filter)
                         .on_input(|value| Message::InputChanged(CamposInput::Filtro, value))
-                        .on_submit(Message::Filter),
-                    keyed_column(
-                        self.itens.iter().map(|i| )//continuar aqui, usar exemplo de todos. precisa
-                        //criar uma forma de buscar os itens e filtrar o que faz sentido para ser
-                        //displayado. Basicamente e isso. Esta na linha 216 do todos.
-                    )
+                        .on_submit(Message::Filter);
+                let itens = keyed_column(
+                    self.estoque.estoque
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, item)| {
+                            if self.filter.is_empty() {
+                                true
+                            } else {
+                                item.produto.to_lowercase().contains(&self.filter.to_lowercase())
+                            }
+                        })
+                        .map(|(i, item)| {
+                            (
+                                i,
+                                text(format!("{} - {}", item.codigo, item.produto)).into()
+                            )
+                        })
+                ).spacing(10);
+
+                column![
+                    title, button_row, input_filter, itens
                 ].into()
             }
             Screens::Carrinho => {
@@ -129,5 +153,6 @@ struct Counter{
 
 fn main() -> iced::Result{
     iced::application("Almoxarifado Biplas", AlmoxarifadoApp::update, AlmoxarifadoApp::view)
+    .window_size((800.0, 800.0))
     .run()
 }
