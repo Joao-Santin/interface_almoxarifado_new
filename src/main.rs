@@ -2,12 +2,14 @@ use iced::widget::{button, text, text_input, row, column, center, keyed_column};
 use iced::Alignment::Center;
 use iced::Length::Fill;
 use iced::{Element, Task as Command};// Subscription para caso precise iniciar algo assim que rodar.
-use egestorapi_test::{ERPToken, AjusteEstoque};
+use egestorapi_test::{ERPToken, AjusteEstoque, AppLogic};
 
 #[derive(Debug, Clone)]
 enum Message{
     Gettoken,
     Gottoken(Result<String, String>),
+    GetAppLogic,
+    GotAppLogic(Result<AppLogic, String>),
     InputChanged(CamposInput, String),
     Filter,
     Changescreen(Screens)
@@ -24,6 +26,7 @@ enum Screens{
 }
 
 struct AlmoxarifadoApp{
+    app_logic: Option<AppLogic>,
     token: String,
     filter: String,
     estoque: AjusteEstoque,
@@ -34,6 +37,7 @@ struct AlmoxarifadoApp{
 impl Default for AlmoxarifadoApp{
     fn default() -> Self {
         Self{
+            app_logic: None,
             token: String::new(),
             filter: String::new(),
             estoque: AjusteEstoque::new(),
@@ -45,6 +49,9 @@ impl Default for AlmoxarifadoApp{
 impl AlmoxarifadoApp{
     async fn get_token()->Result<String, String>{
         ERPToken::get_access_token().await
+    }
+    async fn init_app_logic()-> Result<AppLogic, String>{
+        AppLogic::new().await.map_err(|e| e.to_string())
     }
 
     fn update(&mut self, message: Message)-> Command<Message>{
@@ -60,7 +67,22 @@ impl AlmoxarifadoApp{
                 println!("erro: {}", erro);
                 Command::none()
             },
-            Message::InputChanged(campo, palavra) =>{
+            Message::GetAppLogic => {
+                println!("Getting App logic");
+                Command::perform(Self::init_app_logic(), Message::GotAppLogic)
+            },
+            Message::GotAppLogic(Ok(app_logic_got)) => {
+                self.app_logic = Some(app_logic_got);
+                if let Some(app_logic) = &self.app_logic {
+                    println!("Teste token: {}", app_logic.token.access_token);
+                }
+                Command::none()
+            }, 
+            Message::GotAppLogic(Err(erro)) => {
+                println!("erro:{}", erro);
+                Command::none()
+            }
+            Message::InputChanged(campo, palavra) => {
                 match campo{
                     CamposInput::Filtro => {
                         self.filter = palavra;
@@ -92,7 +114,7 @@ impl AlmoxarifadoApp{
                 let button_row = row![
                     button(text("carrinho"))
                     .on_press(Message::Changescreen(Screens::Carrinho)),
-                    button(text("historico")),
+                    button(text("historico")).on_press(Message::GetAppLogic),
                     button(text("categoria")),
 
                 ];
@@ -152,6 +174,7 @@ struct Counter{
 }
 
 fn main() -> iced::Result{
+    dotenv::dotenv().ok();
     iced::application("Almoxarifado Biplas", AlmoxarifadoApp::update, AlmoxarifadoApp::view)
     .window_size((800.0, 800.0))
     .run()

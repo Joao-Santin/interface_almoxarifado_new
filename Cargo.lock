@@ -1946,6 +1946,7 @@ dependencies = [
 name = "interface_almoxarifado"
 version = "0.1.0"
 dependencies = [
+ "dotenv",
  "egestorapi_test",
  "iced",
  "reqwest",
