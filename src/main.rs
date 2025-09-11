@@ -1,34 +1,34 @@
-use iced::widget::{button, text, text_input, row, column, center, keyed_column};
+use iced::widget::{button, text, text_input, row, column, keyed_column, radio};
 use iced::Alignment::Center;
 use iced::Length::Fill;
 use iced::{Element, Task as Command};// Subscription para caso precise iniciar algo assim que rodar.
-use egestorapi_test::{ERPToken, AjusteEstoque, AppLogic};
+use egestorapi_test::{AjusteEstoque, AppLogic, ERPToken, Estoque};
 
 #[derive(Debug, Clone)]
 enum Message{
-    Gettoken,
-    Gottoken(Result<String, String>),
     GetAppLogic,
     GotAppLogic(Result<AppLogic, String>),
     InputChanged(CamposInput, String),
-    Filter,
     Changescreen(Screens)
 }
 
 #[derive(Clone, Debug)]
 enum CamposInput{
     Filtro,
+    QtdMovimento
 }
 #[derive(Debug, Clone)]
 enum Screens{
-    Main,
-    Carrinho
+    Main,// tela principal, seleção de itens.
+    Carrinho,// tela para checagem do que vai retirar.
+    Contador(Estoque),// tela que vai adicionar o item que quer retirar.
 }
 
 struct AlmoxarifadoApp{
     app_logic: Option<AppLogic>,
     token: String,
     filter: String,
+    qtd_movimento: String,
     estoque: AjusteEstoque,
     screen: Screens
     
@@ -40,6 +40,7 @@ impl Default for AlmoxarifadoApp{
             app_logic: None,
             token: String::new(),
             filter: String::new(),
+            qtd_movimento: String::new(),
             estoque: AjusteEstoque::new(),
             screen: Screens::Main
         }
@@ -47,34 +48,25 @@ impl Default for AlmoxarifadoApp{
 }
 
 impl AlmoxarifadoApp{
-    async fn get_token()->Result<String, String>{
-        ERPToken::get_access_token().await
-    }
     async fn init_app_logic()-> Result<AppLogic, String>{
         AppLogic::new().await.map_err(|e| e.to_string())
     }
 
     fn update(&mut self, message: Message)-> Command<Message>{
         match message{
-            Message::Gettoken => {
-                Command::perform(Self::get_token(), Message::Gottoken)
-            },
-            Message::Gottoken(Ok(token_got)) => {
-                self.token = token_got;
-                Command::none()
-            },
-            Message::Gottoken(Err(erro)) => {
-                println!("erro: {}", erro);
-                Command::none()
-            },
             Message::GetAppLogic => {
                 println!("Getting App logic");
                 Command::perform(Self::init_app_logic(), Message::GotAppLogic)
             },
             Message::GotAppLogic(Ok(app_logic_got)) => {
                 self.app_logic = Some(app_logic_got);
-                if let Some(app_logic) = &self.app_logic {
-                    println!("Teste token: {}", app_logic.token.access_token);
+                if let Some(app_logic) = &mut self.app_logic {
+                    app_logic.ajuste_estoque.get_estoque(app_logic.relatorios.estoques.clone());
+                    println!("Teste token: {}", &app_logic.token.access_token);
+                    let estoque: &Vec<Estoque> = &app_logic.ajuste_estoque.estoque;
+                    for item in estoque{
+                        println!("{}", item.produto)
+                    }
                 }
                 Command::none()
             }, 
@@ -87,14 +79,12 @@ impl AlmoxarifadoApp{
                     CamposInput::Filtro => {
                         self.filter = palavra;
                         Command::none()
+                    },
+                    CamposInput::QtdMovimento => {
+                        self.qtd_movimento = palavra;
+                        Command::none()
                     }
                 }
-            }
-            Message::Filter => {
-                //self.estoque.get_estoque() //fazer na lib um metodo para coleta de estoque de forma
-                //mais rapida
-                println!("filtrando por:{}", self.filter);
-                Command::none()
             }
 
             Message::Changescreen(screen_vindo) =>{
@@ -104,7 +94,7 @@ impl AlmoxarifadoApp{
         }
     }
     fn view(&self) -> Element<Message> {
-        match self.screen{
+        match &self.screen{
             Screens::Main =>{
                 let title = text("almoxarifado")
                     .width(Fill)
@@ -119,26 +109,42 @@ impl AlmoxarifadoApp{
 
                 ];
                 let input_filter = text_input("O que precisa para hoje?", &self.filter)
-                        .on_input(|value| Message::InputChanged(CamposInput::Filtro, value))
-                        .on_submit(Message::Filter);
+                        .on_input(|value| Message::InputChanged(CamposInput::Filtro, value));
+                let estoque_vazio: Vec<Estoque> = Vec::new();
                 let itens = keyed_column(
-                    self.estoque.estoque
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, item)| {
-                            if self.filter.is_empty() {
-                                true
+                        {
+                            let estoque = if let Some(app_logic) = &self.app_logic {
+                                &app_logic.ajuste_estoque.estoque
                             } else {
-                                item.produto.to_lowercase().contains(&self.filter.to_lowercase())
-                            }
-                        })
-                        .map(|(i, item)| {
-                            (
-                                i,
-                                text(format!("{} - {}", item.codigo, item.produto)).into()
-                            )
-                        })
-                ).spacing(10);
+                                &estoque_vazio
+                            };
+                            estoque
+                                .iter()
+                                .enumerate()
+                                .filter(|(_, item)| {
+                                    if self.filter.trim() == "" {
+                                        true
+                                    } else {
+                                        item.produto.to_lowercase().contains(&self.filter.to_lowercase())
+                                    }
+                                })
+                                .map(|(_, item)| {
+                                    (
+                                        item.codigo,
+                                        row![
+                                            text(format!("{} - {} - {}", item.codigo, item.produto, item.estoque)),
+                                            button(text("<retirar>")).on_press(Message::Changescreen(Screens::Contador(Estoque{
+                                                codigo: item.codigo,
+                                                produto: item.produto.clone(),
+                                                estoque: item.estoque,
+                                                custo: item.custo.clone(),
+                                                total: item.total
+                                            })))
+                                        ].into()
+                                    )
+                                })
+                        }
+                    ).spacing(10);
 
                 column![
                     title, button_row, input_filter, itens
@@ -161,6 +167,21 @@ impl AlmoxarifadoApp{
                         ],
 
                     ],
+                ].into()
+            }
+            Screens::Contador(estoque) => {
+                row![
+                    column![
+                        text("Adicionador carrinho"),
+                        text(format!("codigo: {}", &estoque.codigo)),
+                        text(format!("item: {}", &estoque.produto)),
+                        text(format!("estoque: {}", &estoque.estoque)),
+                        text_input("Quantos movimentar?", &self.qtd_movimento),
+                        row![
+                            text("Tipo:"),
+                            radio("Entrada", )//continuar aqui, não sei como funciona radio buttons
+                        ]
+                    ]
                 ].into()
             }
         }
