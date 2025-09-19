@@ -2,14 +2,16 @@ use iced::widget::{button, text, text_input, row, column, keyed_column, radio};
 use iced::Alignment::Center;
 use iced::Length::Fill;
 use iced::{Element, Task as Command};// Subscription para caso precise iniciar algo assim que rodar.
-use egestorapi_test::{AjusteEstoque, AppLogic, ERPToken, Estoque};
+use egestorapi_test::{AjusteEstoque, AppLogic, Estoque, ItemRetirada, TipoMovimento};
 
 #[derive(Debug, Clone)]
 enum Message{
     GetAppLogic,
     GotAppLogic(Result<AppLogic, String>),
     InputChanged(CamposInput, String),
-    Changescreen(Screens)
+    Changescreen(Screens),
+    TrocouTipoMovimento(TipoMovimento),
+    AdicionarAoCarrinho(ItemRetirada)
 }
 
 #[derive(Clone, Debug)]
@@ -28,7 +30,9 @@ struct AlmoxarifadoApp{
     app_logic: Option<AppLogic>,
     token: String,
     filter: String,
-    qtd_movimento: String,
+    qtd_movimento: f32,
+    qtd_movimento_txt: String,
+    tipo_movimento: TipoMovimento,
     estoque: AjusteEstoque,
     screen: Screens
     
@@ -40,7 +44,9 @@ impl Default for AlmoxarifadoApp{
             app_logic: None,
             token: String::new(),
             filter: String::new(),
-            qtd_movimento: String::new(),
+            qtd_movimento: 0.0,
+            qtd_movimento_txt: String::new(),
+            tipo_movimento: TipoMovimento::Retirada,
             estoque: AjusteEstoque::new(),
             screen: Screens::Main
         }
@@ -81,7 +87,14 @@ impl AlmoxarifadoApp{
                         Command::none()
                     },
                     CamposInput::QtdMovimento => {
-                        self.qtd_movimento = palavra;
+                        let palavra = if palavra.is_empty() {"0".to_string()} else { palavra };
+
+                        if palavra.chars().all(|c| c.is_ascii_digit() || c == '.') {
+                            if let Ok(valor) = palavra.parse::<f32>() {
+                                self.qtd_movimento = valor;
+                                self.qtd_movimento_txt = self.qtd_movimento.clone().to_string()
+                            }
+                        }
                         Command::none()
                     }
                 }
@@ -90,6 +103,24 @@ impl AlmoxarifadoApp{
             Message::Changescreen(screen_vindo) =>{
                 self.screen = screen_vindo;
                 Command::none()
+            }
+            Message::TrocouTipoMovimento(tipo_movimento) =>{
+                self.tipo_movimento = tipo_movimento;
+                Command::none()
+            }
+            Message::AdicionarAoCarrinho(item_retirada)=>{
+                if let Some(app_logic) = &mut self.app_logic{
+                    app_logic.ajuste_estoque.add_item_carrinho(item_retirada);
+                    println!("-Itens Adicionados-");
+                    for item in app_logic.ajuste_estoque.carrinhoretirada.iter(){
+                        println!("{}", item.produto)
+                    }
+                    return self.update(Message::Changescreen(Screens::Main));
+                }else{
+                    println!("Falta App logic aqui...")
+                }
+                Command::none()
+
             }
         }
     }
@@ -102,7 +133,7 @@ impl AlmoxarifadoApp{
                     .color([0.5, 0.5, 0.5])
                     .align_x(Center);
                 let button_row = row![
-                    button(text("carrinho"))
+                    button(text(format!("carrinho: {}", "5")))
                     .on_press(Message::Changescreen(Screens::Carrinho)),
                     button(text("historico")).on_press(Message::GetAppLogic),
                     button(text("categoria")),
@@ -176,10 +207,21 @@ impl AlmoxarifadoApp{
                         text(format!("codigo: {}", &estoque.codigo)),
                         text(format!("item: {}", &estoque.produto)),
                         text(format!("estoque: {}", &estoque.estoque)),
-                        text_input("Quantos movimentar?", &self.qtd_movimento),
+                        text_input("Quantos movimentar?", &self.qtd_movimento_txt).on_input(|value| Message::InputChanged(CamposInput::QtdMovimento, value)),
                         row![
                             text("Tipo:"),
-                            radio("Entrada", )//continuar aqui, não sei como funciona radio buttons
+                            radio("Entrada", TipoMovimento::Entrada, Some(self.tipo_movimento), Message::TrocouTipoMovimento),
+                            radio("Retirada", TipoMovimento::Retirada, Some(self.tipo_movimento), Message::TrocouTipoMovimento),
+                            row![
+                                button(text("Voltar")).on_press(Message::Changescreen(Screens::Main)),
+                                button(text("ADD Carr.")).on_press(Message::AdicionarAoCarrinho(ItemRetirada {
+                                    codigo: estoque.codigo,
+                                    produto: estoque.produto.clone(),
+                                    tipo: self.tipo_movimento,
+                                    quantidade: self.qtd_movimento,
+                                    estoqueatual: estoque.estoque
+                                }))
+                            ]
                         ]
                     ]
                 ].into()
@@ -187,11 +229,6 @@ impl AlmoxarifadoApp{
         }
     }
 
-}
-
-#[derive(Default)]
-struct Counter{
-    value:u64,
 }
 
 fn main() -> iced::Result{
