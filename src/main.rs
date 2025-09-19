@@ -1,6 +1,7 @@
-use iced::widget::{button, text, text_input, row, column, keyed_column, radio};
-use iced::Alignment::Center;
-use iced::Length::Fill;
+use iced::widget::shader::wgpu::util::align_to;
+use iced::widget::{button, text, text_input, row, column, keyed_column, radio, scrollable};
+use iced::{Alignment::{Center, Start, End}};
+use iced::Length::{Fill, Fixed};
 use iced::{Element, Task as Command};// Subscription para caso precise iniciar algo assim que rodar.
 use egestorapi_test::{AjusteEstoque, AppLogic, Estoque, ItemRetirada, TipoMovimento};
 
@@ -132,16 +133,37 @@ impl AlmoxarifadoApp{
                     .size(100)
                     .color([0.5, 0.5, 0.5])
                     .align_x(Center);
+                let quant_itens_carrinho: i32;
+                if let Some(app_logic) = &self.app_logic{
+                    quant_itens_carrinho = app_logic.ajuste_estoque.carrinhoretirada.len() as i32
+                }else{
+                    quant_itens_carrinho = 0
+                }
                 let button_row = row![
-                    button(text(format!("carrinho: {}", "5")))
-                    .on_press(Message::Changescreen(Screens::Carrinho)),
-                    button(text("historico")).on_press(Message::GetAppLogic),
-                    button(text("categoria")),
-
+                    button(text(format!("Cart: {}", quant_itens_carrinho.to_string())))
+                        .padding([10, 5])
+                        .on_press(Message::Changescreen(Screens::Carrinho)),
+                    button(text("Refresh"))
+                        .padding([10, 5])
+                        .on_press(Message::GetAppLogic),
                 ];
                 let input_filter = text_input("O que precisa para hoje?", &self.filter)
-                        .on_input(|value| Message::InputChanged(CamposInput::Filtro, value));
+                    .size(35)
+                    .width(1500)
+                    .align_x(Center)    
+                    .on_input(|value| Message::InputChanged(CamposInput::Filtro, value));
                 let estoque_vazio: Vec<Estoque> = Vec::new();
+                let cabecalho = row![
+                    column![
+                        text("CODIGO").size(20),
+                    ].width(Fixed(150.0)).align_x(Center),
+                    column![
+                        text("DESCRICAO").size(20),
+                    ].width(Fixed(200.0)).align_x(Start),
+                    column![
+                        text("ESTOQUE").size(20),
+                    ].width(Fixed(150.0)).align_x(Center),
+                ].spacing(15);
                 let itens = keyed_column(
                         {
                             let estoque = if let Some(app_logic) = &self.app_logic {
@@ -163,22 +185,31 @@ impl AlmoxarifadoApp{
                                     (
                                         item.codigo,
                                         row![
-                                            text(format!("{} - {} - {}", item.codigo, item.produto, item.estoque)),
-                                            button(text("<retirar>")).on_press(Message::Changescreen(Screens::Contador(Estoque{
-                                                codigo: item.codigo,
-                                                produto: item.produto.clone(),
-                                                estoque: item.estoque,
-                                                custo: item.custo.clone(),
-                                                total: item.total
-                                            })))
-                                        ].into()
+                                            column![
+                                                text(item.codigo)
+                                            ].width(Fixed(150.0)).align_x(Center),
+                                            column![
+                                                text(format!("{}", item.produto))
+                                            ].width(Fixed(200.0)).align_x(Start),
+                                            column![
+                                                text(item.estoque)
+                                            ].width(Fixed(150.0)).align_x(Center),
+                                            column![
+                                                button(text("<retirar>")).on_press(Message::Changescreen(Screens::Contador(Estoque{
+                                                    codigo: item.codigo,
+                                                    produto: item.produto.clone(),
+                                                    estoque: item.estoque,
+                                                    custo: item.custo.clone(),
+                                                    total: item.total
+                                                })))
+                                            ].width(Fixed(100.0)).align_x(Center)
+                                        ].spacing(15).into()
                                     )
                                 })
                         }
-                    ).spacing(10);
-
+                    ).spacing(15);
                 column![
-                    title, button_row, input_filter, itens
+                    title, button_row, input_filter,cabecalho, scrollable(column![itens].spacing(15)).height(Fill).width(Fill)
                 ].into()
             }
             Screens::Carrinho => {
@@ -203,32 +234,69 @@ impl AlmoxarifadoApp{
             Screens::Contador(estoque) => {
                 row![
                     column![
-                        text("Adicionador carrinho"),
-                        text(format!("codigo: {}", &estoque.codigo)),
-                        text(format!("item: {}", &estoque.produto)),
-                        text(format!("estoque: {}", &estoque.estoque)),
-                        text_input("Quantos movimentar?", &self.qtd_movimento_txt).on_input(|value| Message::InputChanged(CamposInput::QtdMovimento, value)),
+                        text("adicionar ao carrinho")
+                            .width(Fill)
+                            .size(60)
+                            .color([0.5, 0.5, 0.5])
+                            .align_x(Center),
                         row![
-                            text("Tipo:"),
-                            radio("Entrada", TipoMovimento::Entrada, Some(self.tipo_movimento), Message::TrocouTipoMovimento),
-                            radio("Retirada", TipoMovimento::Retirada, Some(self.tipo_movimento), Message::TrocouTipoMovimento),
-                            row![
-                                button(text("Voltar")).on_press(Message::Changescreen(Screens::Main)),
-                                button(text("ADD Carr.")).on_press(Message::AdicionarAoCarrinho(ItemRetirada {
-                                    codigo: estoque.codigo,
-                                    produto: estoque.produto.clone(),
-                                    tipo: self.tipo_movimento,
-                                    quantidade: self.qtd_movimento,
-                                    estoqueatual: estoque.estoque
-                                }))
-                            ]
-                        ]
-                    ]
-                ].into()
+                            column![
+                                row![
+                                    text(format!("Codigo:")).color([0.5, 0.5, 0.5]).size(20),
+                                ],
+                                row![
+                                    text(format!("Descricao:")).color([0.5, 0.5, 0.5]).size(20),
+                                ].height(Fixed(125.0)).align_y(Center),
+                                row![
+                                    text(format!("Estoque:")).color([0.5, 0.5, 0.5]).size(20),
+                                ],
+                                row![
+                                    text(format!("Movimentar:")).color([0.5, 0.5, 0.5]).size(20),
+                                ],
+                                row![
+                                    text(format!("Tipo:")).color([0.5, 0.5, 0.5]).size(20),
+                                ],
+                                row![
+                                    button(text("Voltar").size(30)).width(100).height(50).on_press(Message::Changescreen(Screens::Main)),
+                                ],
+                            ].align_x(Center).width(Fixed(300.0)).spacing(20),
+                            column![
+                                row![
+                                    text(&estoque.codigo).size(20),
+                                ],
+                                row![
+                                    text(&estoque.produto).size(20),
+                                ].height(Fixed(125.0)).align_y(Center),
+                                row![
+                                    text(&estoque.estoque).size(20),
+                                ],
+                                row![
+                                    text_input("Quantos movimentar?", &self.qtd_movimento_txt)
+                                        .on_input(|value| Message::InputChanged(CamposInput::QtdMovimento, value))
+                                        .width(300)
+                                        .size(20)
+                                        .align_x(Center),
+                                ],
+                                row![
+                                    radio("Entrada", TipoMovimento::Entrada, Some(self.tipo_movimento), Message::TrocouTipoMovimento).size(20),
+                                    radio("Retirada", TipoMovimento::Retirada, Some(self.tipo_movimento), Message::TrocouTipoMovimento).size(20),
+                                ].spacing(40),
+                                row![
+                                    button(text("Add").size(30)).width(100).height(50).on_press(Message::AdicionarAoCarrinho(ItemRetirada {
+                                        codigo: estoque.codigo,
+                                        produto: estoque.produto.clone(),
+                                        tipo: self.tipo_movimento,
+                                        quantidade: self.qtd_movimento,
+                                        estoqueatual: estoque.estoque
+                                    }))
+                                ]
+                            ].align_x(Start).width(Fixed(300.0)).spacing(20),
+                        ].spacing(15),
+                    ].align_x(Center).spacing(50)
+                ].align_y(Center).into()
             }
         }
     }
-
 }
 
 fn main() -> iced::Result{
