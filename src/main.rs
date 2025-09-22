@@ -1,7 +1,7 @@
 use iced::widget::shader::wgpu::util::align_to;
-use iced::widget::{button, text, text_input, row, column, keyed_column, radio, scrollable};
-use iced::{Alignment::{Center, Start, End}};
-use iced::Length::{Fill, Fixed};
+use iced::widget::{button, column, keyed_column, radio, row, scrollable, text, text_input, Space};
+use iced::{Alignment::{Center, Start}};
+use iced::Length::{self, Fill, Fixed};
 use iced::{Element, Task as Command};// Subscription para caso precise iniciar algo assim que rodar.
 use egestorapi_test::{AjusteEstoque, AppLogic, Estoque, ItemRetirada, TipoMovimento};
 
@@ -20,6 +20,12 @@ enum CamposInput{
     Filtro,
     QtdMovimento
 }
+#[derive(PartialEq, Eq, Copy, Clone)]
+enum FiltroTipoMovimento{
+    Geral,
+    Retirada,
+    Entrada
+}
 #[derive(Debug, Clone)]
 enum Screens{
     Main,// tela principal, seleção de itens.
@@ -31,6 +37,7 @@ struct AlmoxarifadoApp{
     app_logic: Option<AppLogic>,
     token: String,
     filter: String,
+    filtro_tipo_selecionado: FiltroTipoMovimento,
     qtd_movimento: f32,
     qtd_movimento_txt: String,
     tipo_movimento: TipoMovimento,
@@ -45,6 +52,7 @@ impl Default for AlmoxarifadoApp{
             app_logic: None,
             token: String::new(),
             filter: String::new(),
+            filtro_tipo_selecionado: FiltroTipoMovimento::Geral,
             qtd_movimento: 0.0,
             qtd_movimento_txt: String::new(),
             tipo_movimento: TipoMovimento::Retirada,
@@ -130,7 +138,7 @@ impl AlmoxarifadoApp{
             Screens::Main =>{
                 let title = text("almoxarifado")
                     .width(Fill)
-                    .size(100)
+                    .size(60)
                     .color([0.5, 0.5, 0.5])
                     .align_x(Center);
                 let quant_itens_carrinho: i32;
@@ -213,23 +221,88 @@ impl AlmoxarifadoApp{
                 ].into()
             }
             Screens::Carrinho => {
-                row![
+                fn comparacao_match(tipinho_item: TipoMovimento, tipinho_filtro: FiltroTipoMovimento) -> bool{
+                    match tipinho_item{
+                        TipoMovimento::Entrada => {
+                            if tipinho_filtro == FiltroTipoMovimento::Entrada{
+                                true
+                            }else{
+                                false
+                            }
+                        },
+                        TipoMovimento::Retirada => {
+                            if tipinho_filtro == FiltroTipoMovimento::Retirada{
+                                true
+                            }else{
+                                false
+                            }
+
+                        }
+                    }
+                }
+
+                let itens_retirada_vazio: Vec<ItemRetirada> = Vec::new();
+                let itens = keyed_column(
+                    {
+                        let itens_retirada = if let Some(app_logic) = &self.app_logic{
+                            &app_logic.ajuste_estoque.carrinhoretirada
+                        } else {
+                            &itens_retirada_vazio
+                        };
+                        itens_retirada
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, item)| {
+                                if self.filtro_tipo_selecionado == FiltroTipoMovimento::Geral{
+                                    true
+                                }else{
+                                    comparacao_match(item.tipo, self.filtro_tipo_selecionado)
+                                }
+                            })
+                            .map(|(_, item)| {
+                                (
+                                    item.codigo,
+                                    row![
+                                        column![
+                                            text(item.codigo)
+                                        ].width(Fixed(150.0)).align_x(Center),
+                                        column![
+                                            text(format!("{}", item.produto))
+                                        ].width(Fixed(200.0)).align_x(Start),
+                                        column![
+                                            text(format!("{}", item.tipo))
+                                        ].width(Fixed(200.0)).align_x(Start),
+                                        column![
+                                            text(format!("{}", item.quantidade))
+                                        ].width(Fixed(200.0)).align_x(Start),
+                                        column![
+                                            text(format!("{}", item.estoqueatual))
+                                        ].width(Fixed(200.0)).align_x(Start),
+                                        column![
+                                            button(text("apagar")).on_press(Message::Changescreen(Screens::Main))
+                                        ]
+                                    ].into()
+                                )
+                            })
+                    }
+                ).spacing(15);
+                column![
                     column![
-                        row![text("text_input"),button(text("testando"))],
-                        column![text("pick_list"),],
-                    ],
-                    column![
-                        text("Codigo:"),
-                        text("Nome:"),
-                        text("Estoque:"),
-                        text("Quantidade Mov:"),
+                        text("carrinho")
+                            .width(Fill)
+                            .size(60)
+                            .color([0.5, 0.5, 0.5])
+                            .align_x(Center),
                         row![
-                            text("-retirada-"),
-                            text("-entrada-")
+                            text("Filtro:"),
+                            button(text("Geral")),
+                            Space::with_width(Length::Fixed(20.0)),
+                            button(text("< OPERACAO >")).on_press(Message::Changescreen(Screens::Main))//voltando screen por enquanto
                         ],
+                        itens
 
                     ],
-                ].into()
+                ].align_x(Center).into()
             }
             Screens::Contador(estoque) => {
                 row![
