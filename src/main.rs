@@ -1,4 +1,3 @@
-use iced::widget::shader::wgpu::util::align_to;
 use iced::widget::{button, column, keyed_column, radio, row, scrollable, text, text_input, Space};
 use iced::{Alignment::{Center, Start}};
 use iced::Length::{self, Fill, Fixed};
@@ -12,7 +11,9 @@ enum Message{
     InputChanged(CamposInput, String),
     Changescreen(Screens),
     TrocouTipoMovimento(TipoMovimento),
-    AdicionarAoCarrinho(ItemRetirada)
+    AdicionarAoCarrinho(ItemRetirada),
+    RetirouDoCarrinho(u32),
+    Resumir
 }
 
 #[derive(Clone, Debug)]
@@ -20,12 +21,14 @@ enum CamposInput{
     Filtro,
     QtdMovimento
 }
+
 #[derive(PartialEq, Eq, Copy, Clone)]
 enum FiltroTipoMovimento{
     Geral,
     Retirada,
     Entrada
 }
+
 #[derive(Debug, Clone)]
 enum Screens{
     Main,// tela principal, seleção de itens.
@@ -120,16 +123,26 @@ impl AlmoxarifadoApp{
             Message::AdicionarAoCarrinho(item_retirada)=>{
                 if let Some(app_logic) = &mut self.app_logic{
                     app_logic.ajuste_estoque.add_item_carrinho(item_retirada);
-                    println!("-Itens Adicionados-");
-                    for item in app_logic.ajuste_estoque.carrinhoretirada.iter(){
-                        println!("{}", item.produto)
-                    }
                     return self.update(Message::Changescreen(Screens::Main));
                 }else{
                     println!("Falta App logic aqui...")
                 }
                 Command::none()
 
+            }
+            Message::RetirouDoCarrinho(codigo) =>{
+                if let Some(app_logic) = &mut self.app_logic{
+                    app_logic.ajuste_estoque.del_item_carrinho(codigo)
+                }else{
+                    println!("Falta App logic aqui...")
+                }
+                Command::none()
+            }
+            Message::Resumir => {
+                if let Some(app_logic) = &mut self.app_logic{
+                    app_logic.ajuste_estoque.resumir()
+                };
+                Command::none()
             }
         }
     }
@@ -265,27 +278,27 @@ impl AlmoxarifadoApp{
                                     row![
                                         column![
                                             text(item.codigo)
-                                        ].width(Fixed(150.0)).align_x(Center),
+                                        ].width(Fixed(100.0)).align_x(Center),
                                         column![
                                             text(format!("{}", item.produto))
-                                        ].width(Fixed(200.0)).align_x(Start),
+                                        ].width(Fixed(250.0)).align_x(Start),
                                         column![
                                             text(format!("{}", item.tipo))
-                                        ].width(Fixed(200.0)).align_x(Start),
-                                        column![
-                                            text(format!("{}", item.quantidade))
-                                        ].width(Fixed(200.0)).align_x(Start),
+                                        ].width(Fixed(100.0)).align_x(Center),
                                         column![
                                             text(format!("{}", item.estoqueatual))
-                                        ].width(Fixed(200.0)).align_x(Start),
+                                        ].width(Fixed(150.0)).align_x(Center),
                                         column![
-                                            button(text("apagar")).on_press(Message::Changescreen(Screens::Main))
+                                            text(format!("{}", item.quantidade))
+                                        ].width(Fixed(120.0)).align_x(Center),
+                                        column![
+                                            button(text("apagar")).on_press(Message::RetirouDoCarrinho(item.codigo))
                                         ]
                                     ].into()
                                 )
                             })
                     }
-                ).spacing(15);
+                ).height(Fixed(320.0)).spacing(15);
                 column![
                     column![
                         text("carrinho")
@@ -295,13 +308,33 @@ impl AlmoxarifadoApp{
                             .align_x(Center),
                         row![
                             text("Filtro:"),
+                            Space::with_width(Length::Fixed(20.0)),
                             button(text("Geral")),
                             Space::with_width(Length::Fixed(20.0)),
-                            button(text("< OPERACAO >")).on_press(Message::Changescreen(Screens::Main))//voltando screen por enquanto
                         ],
-                        itens
-
-                    ],
+                        row![
+                            column![
+                                text("codigo").size(20).color([0.5, 0.5, 0.5])
+                            ].width(Fixed(100.0)).align_x(Center),
+                            column![
+                                text("descricao").size(20).color([0.5, 0.5, 0.5])
+                            ].width(Fixed(250.0)).align_x(Start),
+                            column![
+                                text("tipo").size(20).color([0.5, 0.5, 0.5])
+                            ].width(Fixed(100.0)).align_x(Center),
+                            column![
+                                text("estoque atual").size(20).color([0.5, 0.5, 0.5])
+                            ].width(Fixed(150.0)).align_x(Center),
+                            column![
+                                text("quantidade").size(20).color([0.5, 0.5, 0.5])
+                            ].width(Fixed(120.0)).align_x(Center)
+                        ],
+                        scrollable(itens),
+                        row![
+                            button(text("Voltar").size(30)).width(100).height(50).on_press(Message::Changescreen(Screens::Main)),
+                        button(text("<OPERACAO>").size(30)).width(220).height(50).on_press(Message::Resumir)
+                        ],
+                    ].spacing(15),
                 ].align_x(Center).into()
             }
             Screens::Contador(estoque) => {
@@ -375,6 +408,6 @@ impl AlmoxarifadoApp{
 fn main() -> iced::Result{
     dotenv::dotenv().ok();
     iced::application("Almoxarifado Biplas", AlmoxarifadoApp::update, AlmoxarifadoApp::view)
-    .window_size((800.0, 800.0))
-    .run()
+        .window_size((800.0, 600.0))
+        .run()
 }
