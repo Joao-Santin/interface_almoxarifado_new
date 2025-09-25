@@ -2,7 +2,7 @@ use iced::widget::{button, column, keyed_column, radio, row, scrollable, text, t
 use iced::{Alignment::{Center, Start}};
 use iced::Length::{self, Fill, Fixed};
 use iced::{Element, Task as Command};// Subscription para caso precise iniciar algo assim que rodar.
-use egestorapi_test::{AjusteEstoque, AppLogic, Estoque, ItemRetirada, TipoMovimento};
+use egestorapi_test::{AjusteEstoque, AppLogic, Estoque, ItemRetirada, TipoMovimento, ItemResumo};
 
 #[derive(Debug, Clone)]
 enum Message{
@@ -34,6 +34,7 @@ enum Screens{
     Main,// tela principal, seleção de itens.
     Carrinho,// tela para checagem do que vai retirar.
     Contador(Estoque),// tela que vai adicionar o item que quer retirar.
+    Resumidor(Vec<ItemResumo>)
 }
 
 struct AlmoxarifadoApp{
@@ -73,18 +74,12 @@ impl AlmoxarifadoApp{
     fn update(&mut self, message: Message)-> Command<Message>{
         match message{
             Message::GetAppLogic => {
-                println!("Getting App logic");
                 Command::perform(Self::init_app_logic(), Message::GotAppLogic)
             },
             Message::GotAppLogic(Ok(app_logic_got)) => {
                 self.app_logic = Some(app_logic_got);
                 if let Some(app_logic) = &mut self.app_logic {
                     app_logic.ajuste_estoque.get_estoque(app_logic.relatorios.estoques.clone());
-                    println!("Teste token: {}", &app_logic.token.access_token);
-                    let estoque: &Vec<Estoque> = &app_logic.ajuste_estoque.estoque;
-                    for item in estoque{
-                        println!("{}", item.produto)
-                    }
                 }
                 Command::none()
             }, 
@@ -140,9 +135,16 @@ impl AlmoxarifadoApp{
             }
             Message::Resumir => {
                 if let Some(app_logic) = &mut self.app_logic{
-                    app_logic.ajuste_estoque.resumir()
-                };
+                    app_logic.ajuste_estoque.resumir(app_logic.relatorios.estoques_geral.clone());
+                    let resumo = app_logic.ajuste_estoque.resumoretirada.clone();
+                    drop(app_logic);
+
+                    self.update(Message::Changescreen(Screens::Resumidor(resumo)));
                 Command::none()
+                }else{
+                    println!("Falta App logic aqui...");
+                    Command::none()
+                }
             }
         }
     }
@@ -400,6 +402,9 @@ impl AlmoxarifadoApp{
                         ].spacing(15),
                     ].align_x(Center).spacing(50)
                 ].align_y(Center).into()
+            },
+            Screens::Resumidor(itens_resumo) => {
+                text("Só isso").into()
             }
         }
     }
