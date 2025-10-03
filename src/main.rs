@@ -13,7 +13,9 @@ enum Message{
     TrocouTipoMovimento(TipoMovimento),
     AdicionarAoCarrinho(ItemRetirada),
     RetirouDoCarrinho(u32),
-    Resumir
+    Resumir,
+    GetAjustarEstoque,
+    GotAjustarEstoque(bool),
 }
 
 #[derive(Clone, Debug)]
@@ -34,7 +36,8 @@ enum Screens{
     Main,// tela principal, seleção de itens.
     Carrinho,// tela para checagem do que vai retirar.
     Contador(Estoque),// tela que vai adicionar o item que quer retirar.
-    Resumidor(Vec<ItemResumo>)
+    Resumidor(Vec<ItemResumo>)//produto, item(codigo e estoque final),
+    //estoque atual e quantidade retirada
 }
 
 struct AlmoxarifadoApp{
@@ -74,9 +77,11 @@ impl AlmoxarifadoApp{
     fn update(&mut self, message: Message)-> Command<Message>{
         match message{
             Message::GetAppLogic => {
+                println!("performing: GetAppLogic");
                 Command::perform(Self::init_app_logic(), Message::GotAppLogic)
             },
             Message::GotAppLogic(Ok(app_logic_got)) => {
+                println!("performed: GotAppLogic");
                 self.app_logic = Some(app_logic_got);
                 if let Some(app_logic) = &mut self.app_logic {
                     app_logic.ajuste_estoque.get_estoque(app_logic.relatorios.estoques.clone());
@@ -145,6 +150,38 @@ impl AlmoxarifadoApp{
                     println!("Falta App logic aqui...");
                     Command::none()
                 }
+            }
+            Message::GetAjustarEstoque => {
+                if let Some(app_logic) = &mut self.app_logic{
+                    let client = app_logic.client.clone();
+                    let token = app_logic.token.clone();
+                    let ajuste = app_logic.ajuste_estoque.clone();
+                    return Command::perform(
+                        async move {
+                            ajuste.realizar_operacao(client, token).await
+                        },
+                        |resultado| Message::GotAjustarEstoque(resultado)
+                    )
+                }else{
+                    println!("Falta App logic aqui...");
+                    Command::none()
+                }
+            }
+            Message::GotAjustarEstoque(boleano) =>{
+                match boleano {
+                    true => {
+                        Command::batch(
+                            vec![
+                            self.update(Message::GetAppLogic),
+                            self.update(Message::Changescreen(Screens::Main))
+                            ]
+                        )
+                    },
+                    false => {
+                        self.update(Message::Changescreen(Screens::Carrinho))
+                    },
+                };
+                Command::none()
             }
         }
     }
@@ -404,7 +441,39 @@ impl AlmoxarifadoApp{
                 ].align_y(Center).into()
             },
             Screens::Resumidor(itens_resumo) => {
-                text("Só isso").into()
+                let itens = keyed_column(itens_resumo.iter().map(|item| {
+                (
+                    item.codproduto.clone(),
+                    row![
+                        column![
+                            text(item.codproduto)
+                        ].width(Fixed(150.0)).align_x(Center),
+                        column![
+                            text(item.estoquefinal)
+                        ].width(Fixed(150.0)).align_x(Center),
+                    ].into()
+                    )
+                }));
+                row![
+                    column![
+                        text("conferencia").width(Fill).size(60).color([0.5, 0.5, 0.5]).align_x(Center),
+                        text("area reservada para identificacao de erros caso tenha. se nao responsavel, apenas clicar em concluir!").width(Fill).size(15).color([0.5, 0.5, 0.5]).align_x(Center),
+                        row![
+                            column![
+                                text("CODIGO").size(20).color([0.5, 0.5, 0.5])
+                            ].width(Fixed(150.0)).align_x(Center),
+                            column![
+                                text("ESTOQUE FINAL").size(20).color([0.5, 0.5, 0.5])
+                            ].width(Fixed(150.0)).align_x(Center),
+                        ].spacing(15),
+                        itens,
+                        row![
+                        button(text("Voltar")).on_press(Message::Changescreen(Screens::Carrinho)),
+                        button(text("Finalizar")).on_press(Message::GetAjustarEstoque)
+                        ]
+                    ],
+
+                ].into()
             }
         }
     }
