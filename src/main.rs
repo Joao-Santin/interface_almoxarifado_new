@@ -1,4 +1,4 @@
-use iced::widget::{button, column, keyed_column, radio, row, scrollable, text, text_input, Space};
+use iced::widget::{button, column, keyed_column, radio, row, scrollable, text, text_input, Space, container};
 use iced::{Alignment::{Center, Start}};
 use iced::Length::{self, Fill, Fixed};
 use iced::{Element, Task as Command};// Subscription para caso precise iniciar algo assim que rodar.
@@ -16,6 +16,8 @@ enum Message{
     Resumir,
     GetAjustarEstoque,
     GotAjustarEstoque(bool),
+    GotAppLogicThenChangeScreen(AppLogic),
+    ChangeFilterCarrinho,
 }
 
 #[derive(Clone, Debug)]
@@ -29,6 +31,17 @@ enum FiltroTipoMovimento{
     Geral,
     Retirada,
     Entrada
+}
+impl FiltroTipoMovimento{
+    fn to_text(&self) -> String{
+        match self{
+            FiltroTipoMovimento::Geral => "Geral".to_string(),
+            FiltroTipoMovimento::Retirada => "Retirada".to_string(),
+            FiltroTipoMovimento::Entrada => "Entrada".to_string(),
+        }
+
+    }
+
 }
 
 #[derive(Debug, Clone)]
@@ -77,11 +90,9 @@ impl AlmoxarifadoApp{
     fn update(&mut self, message: Message)-> Command<Message>{
         match message{
             Message::GetAppLogic => {
-                println!("performing: GetAppLogic");
                 Command::perform(Self::init_app_logic(), Message::GotAppLogic)
             },
             Message::GotAppLogic(Ok(app_logic_got)) => {
-                println!("performed: GotAppLogic");
                 self.app_logic = Some(app_logic_got);
                 if let Some(app_logic) = &mut self.app_logic {
                     app_logic.ajuste_estoque.get_estoque(app_logic.relatorios.estoques.clone());
@@ -99,12 +110,16 @@ impl AlmoxarifadoApp{
                         Command::none()
                     },
                     CamposInput::QtdMovimento => {
-                        let palavra = if palavra.is_empty() {"0".to_string()} else { palavra };
+                        if palavra.is_empty(){
+                            self.qtd_movimento = 0.0;
+                            self.qtd_movimento_txt = String::new();
+                            return Command::none();
+                        }
 
                         if palavra.chars().all(|c| c.is_ascii_digit() || c == '.') {
                             if let Ok(valor) = palavra.parse::<f32>() {
                                 self.qtd_movimento = valor;
-                                self.qtd_movimento_txt = self.qtd_movimento.clone().to_string()
+                                self.qtd_movimento_txt = palavra;
                             }
                         }
                         Command::none()
@@ -169,19 +184,43 @@ impl AlmoxarifadoApp{
             }
             Message::GotAjustarEstoque(boleano) =>{
                 match boleano {
-                    true => {
-                        Command::batch(
-                            vec![
-                            self.update(Message::GetAppLogic),
-                            self.update(Message::Changescreen(Screens::Main))
-                            ]
-                        )
+                    true =>{
+                        if let Some(app_logic) = &mut self.app_logic{
+                            return Command::perform(
+                                Self::init_app_logic(),
+                                |res| match res {
+                                    Ok(app_logic_got) => Message::GotAppLogicThenChangeScreen(app_logic_got),
+                                    Err(err) => Message::GotAppLogic(Err(err)),
+                                },
+                            );
+                        }
+                        Command::none()
                     },
-                    false => {
-                        self.update(Message::Changescreen(Screens::Carrinho))
-                    },
+                    false => self.update(Message::Changescreen(Screens::Carrinho))
                 };
                 Command::none()
+            }
+            Message::GotAppLogicThenChangeScreen(app_logic_got) => {
+                self.app_logic = Some(app_logic_got);
+                if let Some(app_logic) = &mut self.app_logic{
+                    app_logic.ajuste_estoque.get_estoque(app_logic.relatorios.estoques.clone());
+                }
+                self.update(Message::Changescreen(Screens::Main))
+            }
+            Message::ChangeFilterCarrinho => {
+                match self.filtro_tipo_selecionado {
+                    FiltroTipoMovimento::Geral => {
+                        self.filtro_tipo_selecionado = FiltroTipoMovimento::Entrada;
+                    },
+                    FiltroTipoMovimento::Entrada => {
+                        self.filtro_tipo_selecionado = FiltroTipoMovimento::Retirada;
+                    }
+                    FiltroTipoMovimento::Retirada => {
+                        self.filtro_tipo_selecionado = FiltroTipoMovimento::Geral;
+                    }
+                }
+                Command::none()
+
             }
         }
     }
@@ -203,7 +242,7 @@ impl AlmoxarifadoApp{
                     button(text(format!("Cart: {}", quant_itens_carrinho.to_string())))
                         .padding([10, 5])
                         .on_press(Message::Changescreen(Screens::Carrinho)),
-                    button(text("Refresh"))
+                    button(text("Carregar!"))
                         .padding([10, 5])
                         .on_press(Message::GetAppLogic),
                 ];
@@ -216,13 +255,13 @@ impl AlmoxarifadoApp{
                 let cabecalho = row![
                     column![
                         text("CODIGO").size(20),
-                    ].width(Fixed(150.0)).align_x(Center),
+                    ].width(Fixed(150.0)).align_x(Start),
                     column![
                         text("DESCRICAO").size(20),
                     ].width(Fixed(200.0)).align_x(Start),
                     column![
                         text("ESTOQUE").size(20),
-                    ].width(Fixed(150.0)).align_x(Center),
+                    ].width(Fixed(150.0)).align_x(Start),
                 ].spacing(15);
                 let itens = keyed_column(
                         {
@@ -269,8 +308,8 @@ impl AlmoxarifadoApp{
                         }
                     ).spacing(15);
                 column![
-                    title, button_row, input_filter,cabecalho, scrollable(column![itens].spacing(15)).height(Fill).width(Fill)
-                ].into()
+                    title, button_row, input_filter,cabecalho, scrollable(container(column![itens].spacing(15)).align_x(Center).width(Fill)).height(Fill)
+                ].align_x(Center).into()
             }
             Screens::Carrinho => {
                 fn comparacao_match(tipinho_item: TipoMovimento, tipinho_filtro: FiltroTipoMovimento) -> bool{
@@ -337,7 +376,7 @@ impl AlmoxarifadoApp{
                                 )
                             })
                     }
-                ).height(Fixed(320.0)).spacing(15);
+                ).spacing(15);
                 column![
                     column![
                         text("carrinho")
@@ -348,19 +387,19 @@ impl AlmoxarifadoApp{
                         row![
                             text("Filtro:"),
                             Space::with_width(Length::Fixed(20.0)),
-                            button(text("Geral")),
+                            button(text(self.filtro_tipo_selecionado.to_text())).on_press(Message::ChangeFilterCarrinho),
                             Space::with_width(Length::Fixed(20.0)),
                         ],
                         row![
                             column![
                                 text("codigo").size(20).color([0.5, 0.5, 0.5])
-                            ].width(Fixed(100.0)).align_x(Center),
+                            ].width(Fixed(100.0)).align_x(Start),
                             column![
                                 text("descricao").size(20).color([0.5, 0.5, 0.5])
                             ].width(Fixed(250.0)).align_x(Start),
                             column![
                                 text("tipo").size(20).color([0.5, 0.5, 0.5])
-                            ].width(Fixed(100.0)).align_x(Center),
+                            ].width(Fixed(100.0)).align_x(Start),
                             column![
                                 text("estoque atual").size(20).color([0.5, 0.5, 0.5])
                             ].width(Fixed(150.0)).align_x(Center),
@@ -368,12 +407,12 @@ impl AlmoxarifadoApp{
                                 text("quantidade").size(20).color([0.5, 0.5, 0.5])
                             ].width(Fixed(120.0)).align_x(Center)
                         ],
-                        scrollable(itens),
+                        scrollable(container(column![itens]).align_x(Center).width(Fill)).height(Fill),
                         row![
                             button(text("Voltar").size(30)).width(100).height(50).on_press(Message::Changescreen(Screens::Main)),
                         button(text("<OPERACAO>").size(30)).width(220).height(50).on_press(Message::Resumir)
-                        ],
-                    ].spacing(15),
+                        ].spacing(15),
+                    ].spacing(15).align_x(Center),
                 ].align_x(Center).into()
             }
             Screens::Contador(estoque) => {
@@ -466,12 +505,12 @@ impl AlmoxarifadoApp{
                                 text("ESTOQUE FINAL").size(20).color([0.5, 0.5, 0.5])
                             ].width(Fixed(150.0)).align_x(Center),
                         ].spacing(15),
-                        itens,
+                        scrollable(container(column![itens]).align_x(Center).width(Fill)).height(Fill),
                         row![
-                        button(text("Voltar")).on_press(Message::Changescreen(Screens::Carrinho)),
-                        button(text("Finalizar")).on_press(Message::GetAjustarEstoque)
-                        ]
-                    ],
+                        button(text("Voltar").size(30)).width(100).height(50).on_press(Message::Changescreen(Screens::Carrinho)),
+                        button(text("Finalizar").size(30).center()).width(220).height(50).on_press(Message::GetAjustarEstoque)
+                        ].spacing(15)
+                    ].align_x(Center).spacing(15),
 
                 ].into()
             }
