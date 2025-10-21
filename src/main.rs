@@ -1,4 +1,4 @@
-#[cfg(windows)]
+#![windows_subsystem = "windows"]
 use iced::widget::{button, column, keyed_column, radio, row, scrollable, text, text_input, Space, container};
 use iced::{Alignment::{Center, Start}};
 use iced::Length::{self, Fill, Fixed};
