@@ -1,3 +1,4 @@
+#[cfg(windows)]
 use iced::widget::{button, column, keyed_column, radio, row, scrollable, text, text_input, Space, container};
 use iced::{Alignment::{Center, Start}};
 use iced::Length::{self, Fill, Fixed};
@@ -18,10 +19,12 @@ enum Message{
     GotAjustarEstoque(bool),
     GotAppLogicThenChangeScreen(AppLogic),
     ChangeFilterCarrinho,
+    SliceCodigoBarrasTxt,
 }
 
 #[derive(Clone, Debug)]
 enum CamposInput{
+    CodigoBarrasTxt,
     Filtro,
     QtdMovimento
 }
@@ -32,6 +35,7 @@ enum FiltroTipoMovimento{
     Retirada,
     Entrada
 }
+
 impl FiltroTipoMovimento{
     fn to_text(&self) -> String{
         match self{
@@ -57,6 +61,7 @@ struct AlmoxarifadoApp{
     app_logic: Option<AppLogic>,
     token: String,
     filter: String,
+    codigo_de_barras_txt: String,
     filtro_tipo_selecionado: FiltroTipoMovimento,
     qtd_movimento: f32,
     qtd_movimento_txt: String,
@@ -72,6 +77,7 @@ impl Default for AlmoxarifadoApp{
             app_logic: None,
             token: String::new(),
             filter: String::new(),
+            codigo_de_barras_txt: String::new(),
             filtro_tipo_selecionado: FiltroTipoMovimento::Geral,
             qtd_movimento: 0.0,
             qtd_movimento_txt: String::new(),
@@ -105,6 +111,10 @@ impl AlmoxarifadoApp{
             }
             Message::InputChanged(campo, palavra) => {
                 match campo{
+                    CamposInput::CodigoBarrasTxt => {
+                        self.codigo_de_barras_txt = palavra;
+                        Command::none()
+                    }
                     CamposInput::Filtro => {
                         self.filter = palavra;
                         Command::none()
@@ -220,6 +230,29 @@ impl AlmoxarifadoApp{
                     }
                 }
                 Command::none()
+
+            }
+            Message::SliceCodigoBarrasTxt => {
+                if let Some((codigo, quantidade)) = &self.codigo_de_barras_txt.trim().split_once("-"){
+                    if let (Ok(valor), Ok(valor2)) = (codigo.trim().parse::<u32>(), quantidade.trim().parse::<f32>()){
+                        let codigo = valor;
+                        let quantidade = valor2;
+                        ////continar aqui!
+                        if let Some(app_logic) = &mut self.app_logic{
+                            let item = app_logic.ajuste_estoque.get_itemretirada_by_id_e_quant(codigo, quantidade, TipoMovimento::Retirada).unwrap();
+                            app_logic.ajuste_estoque.add_item_carrinho(item);
+                        }
+                        self.codigo_de_barras_txt = String::new();
+                        Command::none()
+                    }else{
+                        self.codigo_de_barras_txt = String::new();
+                        Command::none()
+                    }
+                }else{
+                    self.codigo_de_barras_txt = String::new();
+                    Command::none()
+                    
+                }
 
             }
         }
@@ -389,6 +422,7 @@ impl AlmoxarifadoApp{
                             Space::with_width(Length::Fixed(20.0)),
                             button(text(self.filtro_tipo_selecionado.to_text())).on_press(Message::ChangeFilterCarrinho),
                             Space::with_width(Length::Fixed(20.0)),
+                            text_input("Codigo de Barras", &self.codigo_de_barras_txt).on_input(|value| Message::InputChanged(CamposInput::CodigoBarrasTxt, value)).on_submit(Message::SliceCodigoBarrasTxt).width(Fixed(180.0)),
                         ],
                         row![
                             column![
